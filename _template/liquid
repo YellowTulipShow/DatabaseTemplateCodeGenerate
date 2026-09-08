@@ -1,0 +1,38 @@
+
+{%- assign QueryListWhereParameterNames = "" -%}
+{%- for key in table.Fields -%}
+{%- assign field = table.Fields[key] -%}
+    {%- if field.PrimaryKey=='True' or field.IdentitySign=='True' or field.ViceType=='image' or field.Name=='AddUserID' or field.Name=='UpdateUserID' or field.Name=='DeleteUserID' %}
+        {%- continue  -%}
+    {%- else -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- endif -%}
+{% endfor %}
+{%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | split: ',' | compact -%}
+
+
+        {%- for key in QueryListWhereParameterNames -%}
+        {%- assign field = table.Fields[key] -%}
+        {{"\n                        "}}
+        {%- if field.PrimaryKey=='True' or field.IdentitySign=='True' -%}
+
+        {%- elsif field.ViceType == "image" -%}
+
+        {%- elsif field.ViceType == "number" -%}
+
+        {%- elsif field.ViceType == "ID" and field.Name != "Id" -%}
+        {%- assign NamePrefix = field.Name | replace: "ID", "" | replace: "Id", "" | replace: "id", ""  -%}
+
+        {%- elsif field.Name contains "Ids" and field.Type == "string" -%}
+        {%- assign NamePrefix = field.Name | replace: "Ids", ""  -%}
+
+        {%- elsif field.Type == "string" -%}
+
+        {%- elsif field.Type == "bool" -%}
+
+        {%- elsif field.Type == "DateTime" -%}
+
+        {%- else -%}
+
+        {%- endif -%}
+        {% endfor %}

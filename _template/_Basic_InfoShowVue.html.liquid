@@ -1,0 +1,106 @@
+﻿{%- assign IsHaveUeUploadImg = false -%}
+{%- assign IsHaveAddressSet = false -%}
+{%- for key in table.Fields -%}
+    {%- assign field = table.Fields[key] -%}
+    {%- if field.ViceType == "image" -%}
+        {%- assign IsHaveUeUploadImg = true -%}
+    {%- endif -%}
+    {%- if field.Name == "Province"
+        or field.Name == "City"
+        or field.Name == "Area" -%}
+        {%- assign IsHaveAddressSet = true -%}
+    {%- endif -%}
+{%- endfor -%}
+
+<script src="/Scripts/vue/vue.v2.6.12.min.js"></script>
+<link href="/Scripts/style/dataInfo.css" rel="stylesheet" />
+<form class="easyui-form form_label_140 dataInfo divide_3"
+      data-options="
+        novalidate:true,
+        onLoadSuccess:function(data) {
+            console.log('form.loadSuccess.data', data);
+            var form = $(this);
+            new Vue({
+                el: form.find('.region').find('.content.model_show_content')[0],
+                data: { 'model': data },
+                methods: {
+                },
+            });
+
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {%- if field.Name == "LogisticsId" -%}
+            {{"\n            "}}
+            OrderLogisticsInfoQueryToHTML({
+                CompanySignList: data.LogisticsId,
+                LogisticsNoList: data.LogisticsOrder,
+                ReceiverPhone: data.ReceiverPhone,
+            }, function(html) {
+                $('#IDHTML_OrderLogisticsInfo_ShowRegion').html(html);
+            });
+            {%- endif -%}
+            {% endfor %}
+        }">
+    <div class="easyui-tabs" data-options="tabWidth:112" style="width: 100%; margin-bottom: 10px;">
+        <div class="region" title="基础数据信息" style="padding: 10px">
+            <div class="content model_show_content">
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {{"\n                "}}
+                {%- if field.Type == "bool" -%}
+                <div class="box">
+                    <span class="title">{{ field.Explain }}:</span>
+                    <span class="value">{%- raw -%}{{ {%- endraw -%} JSON.parse(model.{{ field.Name }}) == true ? '是' : '否' {%- raw -%} }}{%- endraw -%}</span>
+                </div>
+
+                {%- elsif field.ViceType == "image" -%}
+                <div class="box">
+                    <span class="title">{{ field.Explain }}:</span>
+                    <img class="img" :src="model.{{ field.Name }}" v-on:click="IDBoxShowImg(model.{{ field.Name }})" />
+                    <span class="value">{% raw %}{{{% endraw %} model.{{ field.Name }} {% raw %}}}{% endraw %}</span>
+                </div>
+
+                {%- elsif field.ViceType == "ID" -%}
+                <div class="box">
+                    <span class="title">{{ field.ExplainPrefix }}:</span>
+                    <span class="value">{%- raw -%}{{ {%- endraw -%} model.{{ field.NamePrefix }}Name {%- raw -%} }} {%- endraw -%}({%- raw -%}{{ {%- endraw -%} model.{{ field.Name }} {%- raw -%}}}{%- endraw -%})</span>
+                </div>
+
+                {%- elsif field.ViceType == "IDStrings" -%}
+                <div class="box">
+                    <span class="title">{{ field.ExplainPrefix }}:</span>
+                    <span class="value">{%- raw -%}{{ {%- endraw -%} model.{{ field.NamePrefix }}Names {%- raw -%} }} {%- endraw -%}({%- raw -%}{{ {%- endraw -%} model.{{ field.Name }} {%- raw -%}}}{%- endraw -%})</span>
+                </div>
+
+                {%- elsif field.ViceType == "Dictionaries" -%}
+                <div class="box">
+                    <span class="title">{{ field.Explain }}:</span>
+                    <span class="value">{%- raw -%}{{ {%- endraw -%} model.{{ field.Name }}Name {%- raw -%} }} {%- endraw -%}({%- raw -%}{{ {%- endraw -%} model.{{ field.Name }} {%- raw -%}}}{%- endraw -%})</span>
+                </div>
+
+                {%- else -%}
+                <div class="box">
+                    <span class="title">{{ field.Explain }}:</span>
+                    <span class="value">{%- raw -%}{{ {%- endraw -%} model.{{ field.Name }} {%- raw -%} }}{%- endraw -%}</span>
+                </div>
+
+                {%- endif -%}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</form>
+
+{%- for key in table.Fields -%}
+{%- assign field = table.Fields[key] -%}
+{%- if field.Name == "LogisticsId" -%}
+{{"\n"}}
+<div class="easyui-panel" title="物流信息" iconcls="icon-search" style="margin-bottom: 10px; padding-bottom: 10px;">
+    <div class="package-status">
+        <div class="status-box">
+            <div id="IDHTML_OrderLogisticsInfo_ShowRegion"></div>
+        </div>
+    </div>
+</div>
+{%- endif -%}
+{% endfor %}

@@ -1,0 +1,169 @@
+{%- assign db_NotDbName = db.Name | replace: "Db", "" -%}
+{% comment %} 常规查询值名称集合 {% endcomment %}
+{%- assign QueryListWhereParameterNames = "" -%}
+{% comment %} 字典值集合 {% endcomment %}
+{%- assign DictionariesNames = "" -%}
+{%- for key in table.Fields -%}
+{%- assign field = table.Fields[key] -%}
+    {%- if field.PrimaryKey == 'True'
+        or field.IdentitySign == 'True'
+        or field.ViceType == 'image'
+        or field.Name == 'AddUserID'
+        or field.Name == 'UpdateUserID'
+        or field.Name == 'DeleteUserID'
+        or field.Name == 'Ordinal' %}
+        {%- continue  -%}
+    {%- elsif field.ViceType=="Dictionaries" -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+        {%- assign DictionariesNames = DictionariesNames | append: "," | append: key -%}
+    {%- else -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- endif -%}
+{% endfor %}
+{%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | split: ',' | compact -%}
+{%- assign DictionariesNames = DictionariesNames | split: ',' | compact -%}
+namespace ErTuiShengShi.AdminWebApi.Controllers.{{ db.Name }}Manage
+{
+    /// <summary>
+    /// {{ table.Explain }}
+    /// </summary>
+    public class {{ table.Name }}Controller : ApiController
+    {
+
+        [HttpGet]
+        public Result<object> Get{{ table.Name }}(int id)
+        {
+            var model = db.{{ table.Name }}
+                .Where(b => b.Id == id)
+                .AsNoTracking()
+                .ToDynamics()
+                .FirstOrDefault();
+            return new Result<object>()
+            {
+                ErrorCode = model == null ?
+                    1 : 0,
+                Message = model == null ?
+                    $"查询为空! Id: {id}" :
+                    "查询成功",
+                Data = model,
+            };
+        }
+        private int EditSave({{ table.Name }} model, bool isAdd, string loginAdminUserName)
+        {
+            var changeTool = new CheckModelChangeTools();
+            var oldData = db.{{ table.Name }}
+                .Where(b => b.Id == model.Id)
+                .AsNoTracking()
+                .ToDynamics()
+                .FirstOrDefault();
+            var editLog = new {{ table.Name }}Log()
+            {
+                // Id = 0,
+                AddTime = DateTime.Now,
+                Remark = null,
+                OperationType = null,
+            };
+            if (isAdd)
+            {
+                model.AddTime = DateTime.Now;
+                model.AddUserID = Api.User.Id;
+                db.{{ table.Name }}.Add(model);
+            }
+            else
+            {
+                db.{{ table.Name }}.Attach(model);
+                var entry = db.Entry(model);
+                entry.State = EntityState.Modified;
+                entry.Property(gp => gp.AddTime).IsModified = false;
+                entry.Property(gp => gp.AddUserID).IsModified = false;
+                changeTool.CheckModel(oldData, model);
+            }
+            db.SaveChanges();
+            editLog.OperationType = isAdd ?
+                "添加新数据" : "修改数据";
+            editLog.Remark = isAdd ?
+                $"JSON: {JsonConvert.SerializeObject(model)}, 操作人: {loginAdminUserName}" :
+                $"修改数据: {changeTool.OutputChangeMessage()}, 操作人: {loginAdminUserName}";
+            db.{{ table.Name }}Log.Add(editLog);
+            db.SaveChanges();
+            return model.Id;
+        }
+
+        [HttpPost]
+        public Result<string> Export{{ table.Name }}(PageQueryParam where)
+        {
+            IQueryable<{{ table.Name }}> list;
+            list = db.{{ table.Name }}.AsQueryable();
+            if (where.QueryWhere != null)
+                list = list.QueryWhere(where.QueryWhere);
+
+            {%- for key in DictionariesNames -%}
+            {%- assign field = table.Fields[key] -%}
+            {{"\n            "}}
+            var dict_{{ field.Name }} = db.{{ db.Prefix }}_SystemSetType
+                .QueryRemark(E{{ db.Prefix }}_SystemSetType.{{ field.Name }})
+                .ToDictionaryConfigurations()
+                .ToDictionary(b => b.Value);
+            {%- endfor %}
+            var rlist = list
+                .Select(m => new
+                {
+                    {%- for key in table.Fields -%}
+                    {%- assign field = table.Fields[key] -%}
+                    {{- "\n                    " -}}
+                    m.{{ field.Name }},
+                    {%- endfor %}
+                })
+                .OrderByDescending(a => a.Id)
+                .ToList()
+                .Select(m => new
+                {
+                    {%- for key in table.Fields -%}
+                    {%- assign field = table.Fields[key] -%}
+                    {{"\n                    "}}
+                    {%- if field.ViceType == "ID" -%}
+                    {{ field.ExplainPrefix }}名称 = db.{{ db.Prefix }}_{{ field.NamePrefix }}
+                        .Where(b => b.Id == m.{{ field.Name }})
+                        .Select(b => b.{{ field.NamePrefix }}Name)
+                        .FirstOrDefault(),
+
+                    {%- elsif field.ViceType == "IDStrings" -%}
+                    {{ field.ExplainPrefix }}集合 = m.{{ field.Name }}.ToFieldsExplain(ids => db.{{ db.Prefix }}_{{ field.NamePrefix }}
+                        .Where(b => ids.Contains(b.Id.ToString()))
+                        .Select(b => b.{{ field.NamePrefix }}Name)
+                        .ToList()),
+
+                    {%- elsif field.ViceType == "Dictionaries" -%}
+                    {{ field.Explain }}名称 = dict_{{ field.Name }}.GetValue((m.{{ field.Name }} ?? -1).ToString())?.Key,
+
+                    {%- elsif field.Type == "bool" -%}
+                    {{ field.Explain  }} = m.{{ field.Name }} == true ? "是" : "否",
+
+                    {%- elsif field.Type == "DateTime" -%}
+                    {{ field.Explain  }} = m.{{ field.Name }}.ToDateTimeString(),
+
+                    {%- else -%}
+                    {{ field.Explain  }} = m.{{ field.Name }},
+
+                    {%- endif -%}
+                    {% endfor %}
+                })
+                .ToList();
+
+            string xsl_file_name = "{{ table.Explain }}";
+            string relpath = "/{{ db.Prefix }}_ExportFiles/{{ table.Name }}";
+            string filepath = System.Web.HttpContext.Current.Server.MapPath(relpath);
+            if (!System.IO.Directory.Exists(filepath))
+                System.IO.Directory.CreateDirectory(filepath);
+            var ds = ExcelHelper.ModelToExcelDataSet(rlist);
+            var work_book = ExcelHelper.DataSetToExcelWorkbook(ds, xsl_file_name);
+            string file_path_full = ExcelHelper.SaveWriteLocalPathFile(work_book, xsl_file_name, filepath);
+            string file_path_url = FileHelper.MapPathUrl(file_path_full);
+
+            Result<string> result = new Result<string>();
+            result.Data = file_path_url;
+            result.Message = "导出成功！";
+            return result;
+        }
+    }
+}

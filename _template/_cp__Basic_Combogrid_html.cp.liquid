@@ -1,0 +1,312 @@
+﻿{%- assign db_NotDbName = db.Name | replace: "Db", "" -%}
+{% comment %} 常规查询值名称集合 {% endcomment %}
+{%- assign QueryListWhereParameterNames = "" -%}
+{% comment %} 字典值集合 {% endcomment %}
+{%- assign DictionariesNames = "" -%}
+{%- for key in table.Fields -%}
+{%- assign field = table.Fields[key] -%}
+    {%- if field.PrimaryKey == 'True'
+        or field.IdentitySign == 'True'
+        or field.ViceType == 'image'
+        or field.Name == 'AddUserID'
+        or field.Name == 'UpdateUserID'
+        or field.Name == 'DeleteUserID'
+        or field.Name == 'Ordinal' %}
+        {%- continue  -%}
+    {%- elsif field.ViceType=="Dictionaries" -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+        {%- assign DictionariesNames = DictionariesNames | append: "," | append: key -%}
+    {%- else -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- endif -%}
+{% endfor %}
+{%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | split: ',' | compact -%}
+{%- assign DictionariesNames = DictionariesNames | split: ',' | compact -%}
+
+{%- assign IsHaveUeUploadImg = false -%}
+{%- assign IsHaveAddressSet = false -%}
+{%- for key in table.Fields -%}
+    {%- assign field = table.Fields[key] -%}
+    {%- if field.ViceType == "image" -%}
+        {%- assign IsHaveUeUploadImg = true -%}
+    {%- endif -%}
+    {%- if field.Name == "Province"
+        or field.Name == "City"
+        or field.Name == "Area" -%}
+        {%- assign IsHaveAddressSet = true -%}
+    {%- endif -%}
+{%- endfor -%}
+
+
+<!-- 单选 : {{ table.Explain }}选择 -->
+<div class="search_item">
+    <label>{{ table.Explain }}选择:</label>
+    <input id="search_NNNN" name="NNNN" type="text" class="easyui-combogrid"
+            toolbar="#toolbar_search_NNNN"
+            data-options="
+            panelWidth:800,
+            panelHeight:'auto',
+            panelMaxHeight:400,
+            url:AdminWebApi{{ db.Prefix }}.{{ table.Name }}.QueryList.Url,
+            loader: EasyUI_DataGrid_Option_Loader_UseJSONRequestMethod,
+            pageSize:10,
+            pageList:[10,20,30,40,50],
+            pagination:true,
+            sortName:'Id',
+            sortOrder:'desc',
+            method:'post',
+            queryParams:{
+                QueryWhere: {
+                    QQQQ: $('#toolbar_search_NNNN_QQQQ').textbox('getValue'),
+                },
+            },
+            idField:'Id',
+            textField:'QQQQ',
+            columns:[[
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {{"\n                "}}
+                {%- if field.PrimaryKey=='True' or field.IdentitySign=='True' -%}
+                {field:'{{ field.Name }}',title:'Id',width:60,sortable:true},
+
+                {%- elsif field.ViceType == "image" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:120,formatter:function(val,row){return PicFort(val,row);}},
+
+                {%- elsif field.ViceType == "number" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:90},
+
+                {%- elsif field.ViceType == "ID" -%}
+                {hidden:'hidden',field:'{{ field.Name }}',title:'{{ field.ExplainPrefix }}ID',width:120},
+                {field:'{{ field.NamePrefix }}Name',title:'{{ field.ExplainPrefix }}名称',width:120},
+
+                {%- elsif field.ViceType == "IDStrings" -%}
+                {hidden:'hidden',field:'{{ field.Name }}',title:'{{ field.ExplainPrefix }}Ids',width:120},
+                {field:'{{ field.NamePrefix }}Names',title:'{{ field.ExplainPrefix }}集合',width:120},
+
+                {%- elsif field.ViceType == "Dictionaries" -%}
+                {hidden:'hidden',field:'{{ field.Name }}',title:'{{ field.Explain }}ID',width:80},
+                {field:'{{ field.Name }}Name',title:'{{ field.Explain }}',width:90},
+
+                {%- elsif field.Type == "string" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:120},
+
+                {%- elsif field.Type == "bool" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:80,formatter:function(val,row){return JSON.parse(val) == true ? '是' : '否';}},
+
+                {%- elsif field.Type == "DateTime" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:160},
+
+                {%- else -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:100},
+
+                {%- endif -%}
+                {% endfor %}
+            ]],
+            onClickRow:function(index,row){
+                if (row) {
+                }
+            }" />
+    <div id="toolbar_search_NNNN">
+        <label>{{ table.Explain }}名称:</label>
+        <input id="toolbar_search_NNNN_QQQQ" class="easyui-textbox" style="width: 150px;" type="text">
+        <button type="button" class="easyui-linkbutton" style="height: 28px;" iconcls="icon-zoom"
+                onclick="$('#search_NNNN').combogrid('grid').datagrid('load', {
+                    QueryWhere: {
+                        QQQQ: $('#toolbar_search_NNNN_QQQQ').textbox('getValue'),
+                    },
+                })">
+            搜索
+        </button>
+        <button type="button" class="easyui-linkbutton" style="height: 28px; float: right;" iconcls="icon-remove"
+                onclick="$('#search_NNNN').combogrid('setValue', '');$('#search_NNNN').combogrid('hidePanel')">
+            清除
+        </button>
+    </div>
+</div>
+
+
+<!-- 多选 : {{ table.Explain }}选择 -->
+<script type="text/javascript">
+    onLoadSuccess:function(data) {
+        console.log('form.loadSuccess.data', data);
+
+        $('#search_NNNN').combogrid('setValues',
+            (data.NNNN || '').split(',').filter(function(b) { return b; }));
+    }
+</script>
+<div class="search_item">
+    <label>{{ table.Explain }}选择:</label>
+    <input id="search_NNNN_EditInput" name="NNNN" type="hidden" value="" />
+    <input id="search_NNNN" type="text" class="easyui-combogrid"
+            toolbar="#toolbar_search_NNNN"
+            data-options="
+            multiple:true,
+            separator:',',
+            onChange:function(newValue,oldValue){
+                if (newValue) {
+                    newValue = Array.from(new Set(newValue)).join(',');
+                    $('#search_NNNN_EditInput').val(newValue);
+                }
+            },
+            panelWidth:800,
+            panelHeight:'auto',
+            panelMaxHeight:400,
+            url:AdminWebApi{{ db.Prefix }}.{{ table.Name }}.QueryList.Url,
+            loader: EasyUI_DataGrid_Option_Loader_UseJSONRequestMethod,
+            pageSize:10,
+            pageList:[10,20,30,40,50],
+            pagination:true,
+            sortName:'Id',
+            sortOrder:'desc',
+            method:'post',
+            queryParams:{
+                QueryWhere: {
+                    QQQQ: $('#toolbar_search_NNNN_QQQQ').textbox('getValue'),
+                },
+            },
+            idField:'Id',
+            textField:'QQQQ',
+            columns:[[
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {{"\n                "}}
+                {%- if field.PrimaryKey=='True' or field.IdentitySign=='True' -%}
+                {field:'{{ field.Name }}',title:'Id',width:60,sortable:true},
+                {%- elsif field.ViceType == "image" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:120,formatter:function(val,row){return PicFort(val,row);}},
+                {%- elsif field.ViceType == "number" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:90},
+                {%- elsif field.ViceType == "ID" -%}
+                {field:'{{ field.NamePrefix }}Name',title:'{{ field.Explain }}',width:120},
+                {%- elsif field.ViceType == "IDStrings" -%}
+                {field:'{{ field.NamePrefix }}Names',title:'{{ field.Explain }}',width:120},
+                {%- elsif field.Type == "bool" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:80,formatter:function(val,row){return JSON.parse(val) == true ? '是' : '否';}},
+                {%- elsif field.Type == "DateTime" -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:160},
+                {%- else -%}
+                {field:'{{ field.Name }}',title:'{{ field.Explain }}',width:120},
+                {%- endif -%}
+                {% endfor %}
+            ]],
+            onClickRow:function(index,row){
+                if (row) {
+                }
+            }," />
+    <div id="toolbar_search_NNNN">
+        <label>{{ table.Explain }}名称:</label>
+        <input id="toolbar_search_NNNN_QQQQ" class="easyui-textbox" style="width: 150px;" type="text">
+        <button type="button" class="easyui-linkbutton" style="height: 28px;" iconcls="icon-zoom"
+                onclick="$('#search_NNNN').combogrid('grid').datagrid('load', {
+                    QueryWhere: {
+                        QQQQ: $('#toolbar_search_NNNN_QQQQ').textbox('getValue'),
+                    },
+                })">
+            搜索
+        </button>
+        <button type="button" class="easyui-linkbutton" style="height: 28px; float: right;" iconcls="icon-remove"
+                onclick="$('#search_NNNN').combogrid('setValue', '');$('#search_NNNN').combogrid('hidePanel')">
+            清除
+        </button>
+    </div>
+</div>
+
+
+
+
+                <form id="search_form">
+                    {%- for key in QueryListWhereParameterNames -%}
+                    {%- assign field = table.Fields[key] -%}
+                    {{"\n                    "}}
+                    {%- if field.ViceType == "Dictionaries" -%}
+                    <!-- 单选 : {{ field.Explain }}选择 -->
+                    <div class="search_item">
+                        <label>{{ field.Explain }}:</label>
+                        <input name="{{ field.Name }}" type="text" class="easyui-combobox"
+                               data-options="
+                                editable:false,
+                                valueField:'DicValue',
+                                textField:'DicKey',
+                                method:'get',
+                                url:AdminWebApi{{ db.Prefix }}.{{ db.Prefix }}_SystemSetType.GetSystemSetTypeList.Url,
+                                queryParams:{
+                                    Remark: '{{ field.Name }}',
+                                    EmptyText: '请选择',
+                                },">
+                    </div>
+                    <!-- 多选 : {{ field.Explain }}选择 -->
+                    <div class="search_item">
+                        <label>{{ field.Explain }}:</label>
+                        <input id="search_{{ field.Name }}List" name="{{ field.Name }}List" type="hidden" value="" />
+                        <input type="text" class="easyui-combobox"
+                               data-options="
+                                multiple:true,
+                                separator:',',
+                                editable:false,
+                                valueField:'DicValue',
+                                textField:'DicKey',
+                                method:'get',
+                                url:AdminWebApi{{ db.Prefix }}.{{ db.Prefix }}_SystemSetType.GetSystemSetTypeList.Url,
+                                queryParams:{
+                                    Remark: '{{ field.Name }}',
+                                    EmptyText: '请选择',
+                                },
+                                onChange:function(newV, oldV){
+                                    if (newV) {
+                                        $('#search_{{ field.Name }}List').val(newV);
+                                    }
+                                },">
+                    </div>
+
+                    {%- elsif field.ViceType == "ID" -%}
+                    <!-- 单选 : {{ field.Explain }}选择 -->
+                    <div class="search_item">
+                        <label>{{ field.Explain }}:</label>
+                        <input type="text" name="{{ field.Name }}" class="easyui-combobox"
+                               data-options="
+                                editable:false,
+                                valueField:'Value',
+                                textField:'Text',
+                                method:'get',
+                                url:AdminWebApi{{ db.Prefix }}.SystemDictionaryEnumeration.GetFullNameEnumValueList.Url,
+                                queryParams:{
+                                    FullName: 'ErTuiShengShi.Logic.XXX.Enums.E{{ field.Name }}',
+                                    ProjectName: 'ErTuiShengShi.Logic',
+                                    EmptyText: '请选择',
+                                },">
+                    </div>
+                    <!-- 多选 : {{ field.Explain }}选择 -->
+                    <div class="search_item">
+                        <label>{{ field.Explain }}:</label>
+                        <input id="search_{{ field.Name }}List" name="{{ field.Name }}List" type="hidden" value="" />
+                        <input type="text" class="easyui-combobox"
+                               data-options="
+                                multiple:true,
+                                separator:',',
+                                editable:false,
+                                valueField:'Value',
+                                textField:'Text',
+                                method:'get',
+                                url:AdminWebApi{{ db.Prefix }}.SystemDictionaryEnumeration.GetFullNameEnumValueList.Url,
+                                queryParams:{
+                                    FullName: 'ErTuiShengShi.Logic.XXX.Enums.E{{ field.Name }}',
+                                    ProjectName: 'ErTuiShengShi.Logic',
+                                },
+                                onChange:function(newV, oldV){
+                                    if (newV) {
+                                        $('#search_{{ field.Name }}List').val(newV);
+                                    }
+                                },">
+                    </div>
+
+                    {%- else -%}
+                    <input name="{{ field.Name }}" type="hidden" value="" />
+
+                    {%- endif -%}
+                    {% endfor %}
+                </form>
+
+
+
+
+

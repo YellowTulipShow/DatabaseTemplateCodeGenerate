@@ -1,0 +1,271 @@
+﻿{%- assign IsHaveUeUploadImg = false -%}
+{%- assign IsHaveAddressSet = false -%}
+{%- for key in table.Fields -%}
+    {%- assign field = table.Fields[key] -%}
+    {%- if field.ViceType == "image" -%}
+        {%- assign IsHaveUeUploadImg = true -%}
+    {%- endif -%}
+    {%- if field.Name == "Province"
+        or field.Name == "City"
+        or field.Name == "Area" -%}
+        {%- assign IsHaveAddressSet = true -%}
+    {%- endif -%}
+{%- endfor -%}
+
+<form class="easyui-form form_label_140 edit_form"
+      data-options="
+        novalidate:true,
+        onLoadSuccess:function(data) {
+            console.log('form.loadSuccess.data', data);
+
+            {%- if IsHaveUeUploadImg -%}
+            {{ "\n            " }}
+            Page.UE.SimplateImage.Init();
+            Page.UE.SimplateImage.LoadFormData(this, data);
+            {%- endif -%}
+
+            {%- if IsHaveAddressSet -%}
+            {{ "\n            " }}
+            _plusAddressCityData.useEasyuiCombobox.Init({
+                JqueryEasyuiComboboxId: {
+                    Province: '#dialog_Province',
+                    City: '#dialog_City',
+                    Area: '#dialog_Area',
+                },
+                Value: {
+                    Province: data.Province,
+                    City: data.City,
+                    Area: data.Area,
+                },
+            });
+            {%- endif -%}
+        {{- "\n        " -}}}">
+
+    {{- "\n" -}}
+    {%- for key in table.Fields -%}
+    {%- assign field = table.Fields[key] -%}
+    {{"\n    "}}
+    {%- if field.PrimaryKey=='True'
+        or field.IdentitySign=='True'
+        or field.ViceType == "ID" -%}
+    <input type="hidden" name="{{ field.Name }}" value="0" />{{ "\n" }}
+
+    {%- elsif field.ViceType == "IDStrings" or
+        field.Name == 'AddTime' or
+        field.Name == 'AddUserID' or
+        field.Name == 'AddUserName' or
+        field.Name == 'UpdateTime' or
+        field.Name == 'UpdateUserID' or
+        field.Name == 'UpdateUserName' or
+        field.Name == 'DeleteTime' or
+        field.Name == 'DeleteUserName' or
+        field.Name == 'DeleteUserID' -%}
+    <input type="hidden" name="{{ field.Name }}" value="" />{{ "\n" }}
+
+    {%- elsif field.ViceType == "Dictionaries" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input name="{{ field.Name }}" type="text" class="easyui-combobox"
+               data-options="
+                editable:false,
+                valueField:'DicValue',
+                textField:'DicKey',
+                url:AdminWebApi{{ db.Prefix }}.{{ db.Prefix }}_SystemSetType.GetSystemSetTypeList.Url,
+                queryParams:{
+                    Remark: '{{ field.Name }}',
+                },
+                method:'get'">
+    </div>
+
+    {%- elsif field.ViceType == "image" -%}
+    <div class="form_item" style="height: 108px;">
+        <label>{{ field.Explain }}:</label>
+        <div class="form_item_control" style="padding-top: 10px;">
+            <input name="{{ field.Name }}" type="hidden" value="" data-form-type="imageUrl" />
+            <div class="uploadimages" style="overflow: hidden;">
+                <div class="preview plus_image_container"
+                        onclick="Page.UE.SimplateImage.ClickWriteEvent.call(this, '{{ field.Name }}')">
+                    <a class="plus_image" style="margin-bottom: 0;" href="javascript:;">+</a>
+                </div>
+                <div class="plus_image_buttons" style="display: inline-block;">
+                    <button type="button" class="easyui-linkbutton" iconcls="icon-magnifier_zoom_in"
+                            onclick="Page.UE.SimplateImage.ShowMaxImage.call(this, '{{ field.Name }}')">
+                        放大图片
+                    </button>
+                    <div style="display: block; margin-top: 5px;"></div>
+                    <button type="button" class="easyui-linkbutton" iconcls="icon-delete"
+                            onclick="Page.UE.SimplateImage.DeleteWriteEvent.call(this, '{{ field.Name }}')">
+                        清除图片
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {%- elsif field.ViceType == "combobox" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input name="{{ field.Name }}" type="text" class="easyui-combobox"
+                data-options="
+                editable:false,
+                valueField:'DicValue',
+                textField:'DicKey',
+                url:AdminWebApi{{ db.Prefix }}.{{ db.Prefix }}_SystemSetType.GetSystemSetTypeList.Url,
+                queryParams:{
+                    Remark: '{{ field.Name }}',
+                    EmptyText: '请选择',
+                },
+                method:'get'">
+    </div>
+
+    {%- elsif field.ViceType == "password" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" type="password" class="easyui-passwordbox" />
+    </div>
+
+    {%- elsif field.Name == "Sex" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <select name="Sex" class="easyui-combobox">
+            <option value="男">男</option>
+            <option value="女">女</option>
+        </select>
+    </div>
+
+    {%- elsif field.Name == "Ordinal" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" type="text" class="easyui-numberbox"
+               data-options="min:1,precision:0" value="0" />
+    </div>
+
+    {%- elsif field.Name == "Remark" and field.LengthSize != "-1" -%}
+    <div class="form_item" style="width:100%;">
+        <label>{{ field.Explain }}:</label>
+        <div class="form_item_control" style="display: block; width: 100%;">
+            <input name="{{ field.Name }}" type="text" class="easyui-textbox"
+                    style="width:100%; height: 90px;"
+                    data-options="multiline:true, validType:'length[0,{{ field.LengthSize }}]'" />
+        </div>
+    </div>
+
+    {%- elsif field.Name == "Remark" -%}
+    <div class="form_item" style="width:100%;">
+        <label>{{ field.Explain }}:</label>
+        <div class="form_item_control" style="display: block; width: 100%;">
+            <input name="{{ field.Name }}" type="text" class="easyui-textbox"
+                    style="width:100%; height: 90px;"
+                    data-options="multiline:true" />
+        </div>
+    </div>
+
+    {%- elsif field.Name == "AddTime" -%}
+    <input type="hidden" name="{{ field.Name }}" value="" />
+
+    {%- elsif field.Type == "decimal" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" type="text" class="easyui-numberbox"
+               data-options="min:0,precision:2" value="0.00" />
+    </div>
+
+    {%- elsif field.ViceType == "number" or field.Type == "int" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" type="text" class="easyui-numberbox"
+               data-options="min:0,precision:0" value="0" />
+    </div>
+
+    {%- elsif field.Type == "bool" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <div class="form_item_control">
+            <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" class="easyui-switchbutton" value="true"
+                    data-options="onText:'是',offText:'否',width:80" />
+        </div>
+    </div>
+
+    {%- elsif field.Type == "DateTime" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" type="text" class="easyui-datetimebox" />
+    </div>
+
+    {%- elsif field.Name == "Province" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" type="text" name="{{ field.Name }}" class="easyui-combobox"
+                data-options="
+                editable:false,
+                valueField:'label',
+                textField:'label',
+                onLoadSuccess:function() {
+                    _plusAddressCityData.useEasyuiCombobox.LoadSuccess(this);
+                },
+                onChange:function(n) {
+                    _plusAddressCityData.useEasyuiCombobox.Change(this, 'provinces', '#dialog_City', 'citys');
+                }" />
+    </div>
+
+    {%- elsif field.Name == "City" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" type="text" name="{{ field.Name }}" class="easyui-combobox"
+                data-options="
+                editable:false,
+                valueField:'label',
+                textField:'label',
+                onLoadSuccess:function() {
+                    _plusAddressCityData.useEasyuiCombobox.LoadSuccess(this);
+                },
+                onChange:function(n) {
+                    _plusAddressCityData.useEasyuiCombobox.Change(this, 'citys', '#dialog_Area', 'areas');
+                }" />
+    </div>
+
+    {%- elsif field.Name == "Area" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" type="text" name="{{ field.Name }}" class="easyui-combobox"
+                data-options="
+                editable:false,
+                valueField:'label',
+                textField:'label',
+                onLoadSuccess:function(){
+                    _plusAddressCityData.useEasyuiCombobox.LoadSuccess(this);
+                }" />
+    </div>
+
+    {%- elsif field.Name == "Address" and field.LengthSize != "-1" -%}
+    <div class="form_item" style="width:100%;">
+        <label>{{ field.Explain }}:</label>
+        <div class="form_item_control" style="display: inline-block; width: 80%;">
+            <input name="{{ field.Name }}" type="text" class="easyui-textbox" style="width:100%;"
+                   data-options="validType:'length[0,{{ field.LengthSize }}]'" />
+        </div>
+    </div>
+
+    {%- elsif field.Name == "Address" -%}
+    <div class="form_item" style="width:100%;">
+        <label>{{ field.Explain }}:</label>
+        <div class="form_item_control" style="display: inline-block; width: 80%;">
+            <input name="{{ field.Name }}" type="text" class="easyui-textbox" style="width:100%;" />
+        </div>
+    </div>
+
+    {%- elsif field.Type == "string" and field.LengthSize != "-1" -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" type="text" class="easyui-textbox"
+               data-options="validType:'length[0,{{ field.LengthSize }}]'" />
+    </div>
+
+    {%- else -%}
+    <div class="form_item">
+        <label>{{ field.Explain }}:</label>
+        <input id="dialog_{{ field.Name }}" name="{{ field.Name }}" type="text" class="easyui-textbox" />
+    </div>
+    {%- endif -%}
+    {% endfor %}
+</form>

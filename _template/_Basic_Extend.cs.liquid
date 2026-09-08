@@ -1,0 +1,266 @@
+{%- assign db_NotDbName = db.Name | replace: "Db", "" -%}
+{% comment %} 常规查询值名称集合 {% endcomment %}
+{%- assign QueryListWhereParameterNames = "" -%}
+{% comment %} 字典值集合 {% endcomment %}
+{%- assign DictionariesNames = "" -%}
+{%- for key in table.Fields -%}
+{%- assign field = table.Fields[key] -%}
+    {%- if field.PrimaryKey == 'True'
+        or field.IdentitySign == 'True'
+        or field.ViceType == 'image'
+        or field.Name == 'AddUserID'
+        or field.Name == 'UpdateUserID'
+        or field.Name == 'DeleteUserID'
+        or field.Name == 'Ordinal' %}
+        {%- continue  -%}
+    {%- elsif field.ViceType=="Dictionaries" -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+        {%- assign DictionariesNames = DictionariesNames | append: "," | append: key -%}
+    {%- else -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- endif -%}
+{% endfor %}
+{%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | split: ',' | compact -%}
+{%- assign DictionariesNames = DictionariesNames | split: ',' | compact -%}
+using System;
+using System.Linq;
+
+using ErTuiShengShi.Data;
+
+namespace ErTuiShengShi.Logic.{{ db_NotDbName }}.QueryWhere
+{
+    /// <summary>
+    /// {{ table.Explain }}
+    /// </summary>
+    public static class {{ table.Name }}Extend
+    {
+        /// <summary>
+        /// 基础查询条件
+        /// </summary>
+        public class BasicQueryWhere
+        {
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {{"\n            "}}
+            {%- if field.Name == 'Id' -%}
+            public int? {{ field.Name }};
+            public string {{ field.Name }}List;
+
+            {%- elsif field.Name == 'RowVersion' -%}
+            {%- continue  -%}
+
+            {%- elsif field.Name == 'AddUserID'
+                or field.Name == 'UpdateUserID'
+                or field.Name == 'DeleteUserID' -%}
+            public {{field.Type}}{{ field.NullAbleChar }} {{ field.Name }};
+
+            {%- elsif field.ViceType == 'ID' or field.ViceType == 'Dictionaries' -%}
+            public {{ field.Type }}{{ field.NullAbleChar }} {{ field.Name }};
+            public string {{ field.Name }}List;
+
+            {%- elsif field.ViceType == 'number' -%}
+            public int? {{ field.Name }}Where;
+            public {{ field.Type }}{{ field.NullAbleChar }} {{ field.Name }};
+
+            {%- elsif field.Type == 'DateTime' -%}
+            public {{ field.Type }}{{ field.NullAbleChar }} {{ field.Name }}Start;
+            public {{field.Type}}{{ field.NullAbleChar }} {{ field.Name }}End;
+
+            {%- elsif field.Type == 'string' -%}
+            public {{field.Type}}{{ field.NullAbleChar }} {{ field.Name }};
+
+            {%- else -%}
+            public {{field.Type}}? {{ field.Name }};
+
+            {%- endif -%}
+            {% endfor %}
+        }
+
+        /// <summary>
+        /// 查询筛选
+        /// </summary>
+        public static IQueryable<{{ table.Name }}> QueryWhere(this IQueryable<{{ table.Name }}> source, BasicQueryWhere where)
+        {
+            IQueryable<{{ table.Name }}> list = null;
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {%- assign is_IdDict = field.ViceType == 'ID' or field.ViceType == 'Dictionaries' -%}
+            {{"\n            "}}
+            {%- if field.Name == 'Id' -%}
+            if (where.{{ field.Name }} != null)
+            {
+                list = (list ?? source).Where(m => m.{{ field.Name }} == where.{{ field.Name }});
+            }
+            {%- elsif field.Name == 'RowVersion' -%}
+            {%- continue  -%}
+            if (!string.IsNullOrEmpty(where.{{ field.Name }}List) && !string.IsNullOrWhiteSpace(where.{{ field.Name }}List))
+            {
+                {{field.Type}}?[] intlist = where.{{ field.Name }}List.Trim()
+                    .Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(b => b.ToIntOrNull())
+                    .Where(b => b != null && b > 0)
+                    .ToArray() ?? new {{field.Type}}?[] { };
+                if (intlist.Length > 0)
+                {
+                    list = (list ?? source).Where(m => intlist.Contains(m.{{ field.Name }}));
+                }
+            }
+
+            {%- elsif field.Name == 'AddUserID'
+                or field.Name == 'UpdateUserID'
+                or field.Name == 'DeleteUserID' -%}
+            if (where.{{ field.Name }} != null)
+            {
+                list = (list ?? source).Where(m => m.{{ field.Name }} == where.{{ field.Name }});
+            }
+
+            {%- elsif field.ViceType == "number" -%}
+            if (where.{{ field.Name }}Where != null && where.{{ field.Name }}Where > 0 && where.{{ field.Name }} != null)
+            {
+                switch (where.{{ field.Name }}Where)
+                {
+                    case 1: list = (list ?? source).Where(m => m.{{ field.Name }} < where.{{ field.Name }}); break;
+                    case 2: list = (list ?? source).Where(m => m.{{ field.Name }} <= where.{{ field.Name }}); break;
+                    case 3: list = (list ?? source).Where(m => m.{{ field.Name }} == where.{{ field.Name }}); break;
+                    case 4: list = (list ?? source).Where(m => m.{{ field.Name }} > where.{{ field.Name }}); break;
+                    case 5: list = (list ?? source).Where(m => m.{{ field.Name }} >= where.{{ field.Name }}); break;
+                }
+            }
+
+            {%- elsif is_IdDict and field.Type == 'long' -%}
+            if (where.{{ field.Name }} != null)
+            {
+                list = (list ?? source).Where(m => m.{{ field.Name }} == where.{{ field.Name }});
+            }
+            if (!string.IsNullOrEmpty(where.{{ field.Name }}List) && !string.IsNullOrWhiteSpace(where.{{ field.Name }}List))
+            {
+                {{field.Type}}?[] intlist = where.{{ field.Name }}List.Trim()
+                    .Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(b => b.ToLongOrNull())
+                    .Where(b => b != null && b > 0)
+                    .ToArray() ?? new {{field.Type}}?[] { };
+                if (intlist.Length > 0)
+                {
+                    list = (list ?? source).Where(m => intlist.Contains(m.{{ field.Name }}));
+                }
+            }
+
+            {%- elsif is_IdDict -%}
+            if (where.{{ field.Name }} != null)
+            {
+                list = (list ?? source).Where(m => m.{{ field.Name }} == where.{{ field.Name }});
+            }
+            if (!string.IsNullOrEmpty(where.{{ field.Name }}List) && !string.IsNullOrWhiteSpace(where.{{ field.Name }}List))
+            {
+                {{field.Type}}?[] intlist = where.{{ field.Name }}List.Trim()
+                    .Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(b => b.ToIntOrNull())
+                    .Where(b => b != null && b > 0)
+                    .ToArray() ?? new {{field.Type}}?[] { };
+                if (intlist.Length > 0)
+                {
+                    list = (list ?? source).Where(m => intlist.Contains(m.{{ field.Name }}));
+                }
+            }
+
+            {%- elsif field.ViceType == "IDStrings" -%}
+            if (!string.IsNullOrEmpty(where.{{ field.Name }}) && !string.IsNullOrWhiteSpace(where.{{ field.Name }}))
+            {
+                var strlist = where.{{ field.Name }}.Trim()
+                    .Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .ToArray() ?? new string[] { };
+                if (strlist.Length > 0)
+                {
+                    IQueryable<{{ table.Name }}> method(string value)
+                    {
+                        return (list ?? source).Where(a =>
+                            a.{{ field.Name }} == value ||
+                            a.{{ field.Name }}.StartsWith(value + ",") ||
+                            a.{{ field.Name }}.EndsWith("," + value) ||
+                            a.{{ field.Name }}.Contains("," + value + ","));
+                    }
+                    var all_list = method(strlist[0]);
+                    for (int i = 1; i < strlist.Length; i++)
+                    {
+                        var sonlist = method(strlist[i]);
+                        all_list = all_list.Concat(sonlist);
+                    }
+                    list = from entity in all_list
+                            where entity.Id > 0
+                            group entity by entity.Id into groups
+                            select groups.FirstOrDefault();
+                }
+            }
+
+            {%- elsif field.Type == "string" -%}
+            if (!string.IsNullOrEmpty(where.{{ field.Name }}) && !string.IsNullOrWhiteSpace(where.{{ field.Name }}))
+            {
+                where.{{ field.Name }} = where.{{ field.Name }}.Trim();
+                list = (list ?? source).Where(m => m.{{ field.Name }}.Contains(where.{{ field.Name }}));
+            }
+
+            {%- elsif field.Type == "bool" -%}
+            if (where.{{ field.Name }} != null)
+            {
+                list = (list ?? source).Where(m => m.{{ field.Name }} == true == where.{{ field.Name }});
+            }
+
+            {%- elsif field.Type == "DateTime" -%}
+            if (where.{{ field.Name }}Start != null && where.{{ field.Name }}End != null)
+            {
+                if (where.{{ field.Name }}Start > where.{{ field.Name }}End)
+                {
+                    DateTime? temporary = where.{{ field.Name }}Start;
+                    where.{{ field.Name }}Start = where.{{ field.Name }}End;
+                    where.{{ field.Name }}End = temporary;
+                }
+            }
+            if (where.{{ field.Name }}Start != null)
+            {
+                list = (list ?? source).Where(m => where.{{ field.Name }}Start <= m.{{ field.Name }});
+            }
+            if (where.{{ field.Name }}End != null)
+            {
+                list = (list ?? source).Where(m => m.{{ field.Name }} < where.{{ field.Name }}End);
+            }
+
+            {%- else -%}
+            if (where.{{ field.Name }} != null)
+            {
+                list = (list ?? source).Where(m => m.{{ field.Name }} == where.{{ field.Name }});
+            }
+
+            {%- endif -%}
+            {% endfor %}
+            return list ?? source;
+        }
+
+        /// <summary>
+        /// 转为匿名数据模型
+        /// </summary>
+        /// <param name="source">数据源</param>
+        /// <returns>匿名数据模型</returns>
+        public static IQueryable<object> ToDynamics(this IQueryable<{{ table.Name }}> source)
+        {
+            Func<{{ table.Name }}, object> func = ToDynamic;
+            return source.Select(func).AsQueryable();
+        }
+
+        /// <summary>
+        /// 转为匿名数据模型
+        /// </summary>
+        /// <param name="b">数据模型</param>
+        /// <returns>匿名数据模型</returns>
+        public static object ToDynamic(this {{ table.Name }} m)
+        {
+            return new
+            {
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {{- "\n                " -}}
+                m.{{ field.Name }},
+                {%- endfor %}
+            };
+        }
+    }
+}

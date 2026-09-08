@@ -1,0 +1,265 @@
+﻿{%- assign db_NotDbName = db.Name | replace: "Db", "" -%}
+{% comment %} 常规查询值名称集合 {% endcomment %}
+{%- assign QueryListWhereParameterNames = "" -%}
+{%- for key in table.Fields -%}
+{%- assign field = table.Fields[key] -%}
+    {%- if field.PrimaryKey == 'True'
+        or field.IdentitySign == 'True'
+        or field.ViceType == 'image'
+        or field.Name == 'AddUserID'
+        or field.Name == 'UpdateUserID'
+        or field.Name == 'DeleteUserID'
+        or field.Name == 'Ordinal' %}
+        {%- continue  -%}
+    {%- elsif field.ViceType=="Dictionaries" -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- else -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- endif -%}
+{% endfor %}
+{%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | split: ',' | compact -%}
+namespace {{ db.Name }}Manage {
+    /** {{ table.Explain }} */
+    export class {{ table.Name }}_ControlManagement {
+        protected EditLock_Save: boolean = false;
+        protected readonly param: Logic.Func.M.PageInitParam;
+
+        private Permission_Add: boolean = false;
+        private Permission_Edit: boolean = false;
+
+        constructor(param: Logic.Func.M.PageInitParam) {
+            this.param = param;
+
+            let self = this;
+            $(async () => {
+                await CheckPageControlPermission([{
+                    permissionName: "{{ db.Prefix }}_{{ table.Explain }}添加",
+                    controlJQuery: ".operating_Add",
+                    callBack: (is: boolean) => { self.Permission_Add = is; }
+                }, {
+                    permissionName: "{{ db.Prefix }}_{{ table.Explain }}修改",
+                    controlJQuery: ".operating_Edit",
+                    callBack: (is: boolean) => { self.Permission_Edit = is; }
+                }, {
+                    permissionName: "{{ db.Prefix }}_{{ table.Explain }}删除",
+                    controlJQuery: ".operating_Delete"
+                }]);
+            });
+        }
+
+        public GetSearchData(): PageQueryParam<{{ table.Name }}_QueryWhere> {
+            let self = this;
+            UrlArgShineUponFormContents(self.param.search_form_name);
+            let json: {{ table.Name }}_QueryWhere = $(self.param.search_form_name).serializeJSON();
+            return {
+                QueryWhere: json,
+            };
+        }
+
+        public Search() {
+            let self = this;
+            let json = self.GetSearchData();
+            $(self.param.datagrid_name).datagrid("load", json);
+            return false;
+        }
+
+        public Create() {
+            let self = this;
+            let model: {{ table.Name }} = {};
+            self.UpdateOpen(model, true);
+        }
+        public async Edit() {
+            let self = this;
+            let row: {{ table.Name }} = $(self.param.datagrid_name).datagrid("getSelected");
+            if (!row) {
+                $.messager.alert("提示", "未选择数据！", "info");
+                return;
+            }
+            let model = row;
+            self.UpdateOpen(model, false);
+        }
+        private async UpdateOpen(model: {{ table.Name }}, is_new_create: boolean) {
+            let self = this;
+            let get_edit_func: GetEditModelFunction;
+            let conf: Page.EasyUI.Extend.MConfig_BaiscEditSaveDialog = {
+                title: (is_new_create ? "新增" : "编辑") + "{{ table.Explain }}",
+                url: "{{ table.Name }}Edit.html",
+                style: {
+                    "width": "850px",
+                    // "height": "80%",
+                    "padding": "10px 20px 0",
+                },
+                loadFunc: (dialog: Page.EasyUI.Extend.Dialog) => {
+                    let form = dialog.GetDialog().find(default_from_get_jquery_expression);
+                    model = formatPrintModelContent(model);
+                    model['_set_edit_callback'] = function (func: GetEditModelFunction) {
+                        get_edit_func = func;
+                    }
+                    form.form("load", model);
+                },
+                isSave: is_new_create ? self.Permission_Add : self.Permission_Edit,
+                saveFunc: (dialog: Page.EasyUI.Extend.Dialog) => {
+                    let api_item: ApiItem = AdminWebApi{{ db.Prefix }}.{{ table.Name }}.Edit;
+                    let content: {{ table.Name }} = DialogUseGetEditModelFunction(dialog, get_edit_func, default_from_get_jquery_expression);
+                    if (!content) {
+                        return;
+                    }
+                    content = formatPrintModelContent(content);
+                    self.ExecutePost(api_item, content, () => {
+                        dialog.Close();
+                        $(self.param.datagrid_name).datagrid(is_new_create ? "load" : "reload");
+                    });
+                },
+                closeFunc: (_) => { },
+            };
+            Page.EasyUI.Extend.Dialog.ToGenerate_BaiscEditSaveDialog(conf).Create().Open();
+        }
+
+        private async ExecutePost(api_item: ApiItem, json: object, success_callback: (data: any) => void) {
+            let self = this;
+            if (self.EditLock_Save) {
+                console.info("正在执行操作, 锁定中...");
+                return;
+            }
+            $.messager.progress({
+                noheader: true,
+                title: false,
+                msg: "正在执行操作中...",
+                interval: 100,
+            });
+            self.EditLock_Save = true;
+            let result = await Call(api_item, json);
+            self.EditLock_Save = false;
+            $.messager.progress("close");
+            if (result.Error) {
+                $.messager.alert({
+                    title: "提示",
+                    msg: GetMessage(result),
+                    icon: "error"
+                });
+                return;
+            }
+            $.messager.alert({
+                title: "提示",
+                msg: GetMessage(result),
+                icon: "success"
+            });
+            if (success_callback) {
+                success_callback(result.Data);
+            }
+        }
+
+        public async Remove() {
+            let self = this;
+            let rows: {{ table.Name }}[] = $(self.param.datagrid_name).datagrid("getSelections");
+            if (!rows.length) {
+                $.messager.alert({
+                    title: "提示",
+                    msg: "请选择要删除的项。",
+                    icon: "info"
+                });
+                return;
+            }
+            let hintMsg: string = "确认删除选中的项？";
+            if (!await new Promise((resolve, reject) => $.messager.confirm("提示", hintMsg, r => resolve(r)))) {
+                return;
+            }
+            let json = {
+                ids: Enumerable.from<{{ table.Name }}>(rows).select(r => r.Id).toArray(),
+            };
+
+            let api_item: ApiItem = AdminWebApi{{ db.Prefix }}.{{ table.Name }}.Deletes;
+            self.ExecutePost(api_item, json, () => {
+                $(self.param.datagrid_name).data("SelectIndex", $(self.param.datagrid_name).datagrid("getRowIndex", rows[0]));
+                $(self.param.datagrid_name).data("onLoadSuccessAfter", function () {
+                    $(self.param.datagrid_name).datagrid("clearSelections");
+                });
+                $(self.param.datagrid_name).datagrid("reload");
+            });
+        }
+    }
+
+    type {{ table.Name }}_QueryWhere = {% raw -%}{{%- endraw -%}
+        {%- for key in table.Fields -%}
+        {%- assign field = table.Fields[key] -%}
+        {{"\n        "}}
+        {%- if field.Name == 'Id' -%}
+        {{ field.Name }}?: number;
+        {{ field.Name }}List?: string;
+
+        {%- elsif field.Name == 'AddUserID'
+            or field.Name == 'UpdateUserID'
+            or field.Name == 'DeleteUserID' -%}
+        {{ field.Name }}?: number;
+
+        {%- elsif field.ViceType == 'ID' or field.ViceType == 'Dictionaries' -%}
+        {{ field.Name }}?: number;
+        {{ field.Name }}List?: string;
+
+        {%- elsif field.ViceType == 'number' -%}
+        {{ field.Name }}Where?: number;
+        {{ field.Name }}?: number;
+
+        {%- elsif field.Type == "bool" -%}
+        {{ field.Name }}?: boolean;
+
+        {%- elsif field.Type == 'DateTime' -%}
+        {{ field.Name }}Start?: any;
+        {{ field.Name }}End?: any;
+
+        {%- elsif field.Type == 'string' -%}
+        {{ field.Name }}?: string;
+
+        {%- else -%}
+        {{ field.Name }}?: string;
+
+        {%- endif -%}
+        {% endfor %}
+    {% raw -%}}{%- endraw %};
+
+    type {{ table.Name }} = {% raw -%}{{%- endraw -%}
+        {%- for key in table.Fields -%}
+        {%- assign field = table.Fields[key] -%}
+        {{"\n        "}}
+        {%- if field.PrimaryKey=='True' or field.IdentitySign=='True' -%}
+        {{ field.Name }}?: number;
+
+        {%- elsif field.ViceType == "image" -%}
+        {{ field.Name }}?: string;
+
+        {%- elsif field.ViceType == "number" -%}
+        {{ field.Name }}?: number;
+
+        {%- elsif field.Type == "bool" -%}
+        {{ field.Name }}?: boolean;
+
+        {%- elsif field.Name == 'AddUserID' or field.Name == 'UpdateUserID' or field.Name == 'DeleteUserID' -%}
+        {{ field.Name }}?: number;
+        {{ field.NamePrefix }}Name?: string;
+
+        {%- elsif field.Name == "AddUserId" or field.Name == "AddUserID" -%}
+        {{ field.Name }}?: number;
+        {{ field.NamePrefix }}Name?: string;
+
+        {%- elsif field.ViceType == "ID" -%}
+        {{ field.Name }}?: number;
+        {{ field.NamePrefix }}Name?: string;
+
+        {%- elsif field.ViceType == "IDStrings" -%}
+        {{ field.Name }}?: number;
+        {{ field.NamePrefix }}Names?: string;
+
+        {%- elsif field.ViceType == "Dictionaries" -%}
+        {{ field.Name }}?: number;
+        {{ field.Name }}Name?: string;
+
+        {%- elsif field.Type == "DateTime" -%}
+        {{ field.Name }}?: string;
+
+        {%- else -%}
+        {{ field.Name }}?: string;
+
+        {%- endif -%}
+        {% endfor %}
+    {% raw -%}}{%- endraw -%};
+}

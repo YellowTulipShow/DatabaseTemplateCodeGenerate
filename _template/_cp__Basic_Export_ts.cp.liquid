@@ -1,0 +1,84 @@
+﻿namespace {{ db.Name }}Manage {
+    // <button class="easyui-linkbutton operating_Export" plain="true" iconcls="icon-print" onclick="page.Export('#search_form')">导出Excel</button>
+    /** {{ table.Explain }} */
+    static {{ table.Name }} = {
+        Get{{ table.Name }}: new ApiItem(AdminApiConfig.BaseUrl + "/api/{{ table.Name }}/Get{{ table.Name }}", "post"),
+        Export{{ table.Name }}: new ApiItem(AdminApiConfig.BaseUrl + "/api/{{ table.Name }}/Export{{ table.Name }}", "post"),
+    }
+    export class {{ table.Name }} {
+        constructor() {
+            let self = this;
+            $(async function () {
+                await CheckPageControlPermission([{
+                    permissionName: "{{ db.Prefix }}_{{ table.Explain }}导出",
+                    controlJQuery: ".operating_Export",
+                }]);
+            });
+        }
+
+        private async QueryModelID(id) {
+            let self = this;
+            // 查询数据库
+            let query_json = {
+                id: id,
+            };
+            $.messager.progress({
+                noheader: true,
+                title: false,
+                msg: "获取数据中...",
+                interval: 100,
+            });
+            self.EditLock_Save = true;
+            let result = await Call(AdminWebApi{{ db.Prefix }}.{{ table.Name }}.Get{{ table.Name }}.UrlData(query_json));
+            self.EditLock_Save = false;
+            $.messager.progress("close");
+            if (result.Error) {
+                $.messager.alert({
+                    title: "提示",
+                    msg: GetMessage(result),
+                    icon: "error"
+                });
+                return;
+            }
+            return result.Data;
+        }
+
+        public async Export(search_form_name: string) {
+            let self = this;
+            $.messager.progress({
+                noheader: true,
+                title: false,
+                msg: "数据导出中...",
+                interval: 100
+            });
+            let json = self.GetSearchData(search_form_name);
+            let result = await Call(AdminWebApi{{ db.Prefix }}.{{ table.Name }}.Export{{ table.Name }}, json);
+            $.messager.progress("close");
+            if (result.Error) {
+                $.messager.alert({
+                    title: "提示",
+                    msg: GetMessage(result),
+                    icon: "error"
+                });
+                return;
+            }
+
+            let xls_url = result.Data;
+            if (!xls_url) {
+                $.messager.alert({
+                    title: "提示",
+                    msg: `返回导出文件路径为空: ${GetMessage(result)}`,
+                    icon: "error"
+                });
+                return;
+            }
+
+            let a = document.createElement("a");
+            a.download = "{{ table.Explain }}数据.xlsx";
+            a.href = AdminWebApi{{ db.Prefix }}.BaseUrl + "/" + xls_url;
+            $("body").append(a);
+            a.click();
+            $(a).remove();
+        }
+    }
+}

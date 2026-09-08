@@ -1,0 +1,332 @@
+{%- assign db_NotDbName = db.Name | replace: "Db", "" -%}
+{% comment %} 常规查询值名称集合 {% endcomment %}
+{%- assign QueryListWhereParameterNames = "" -%}
+{%- for key in table.Fields -%}
+{%- assign field = table.Fields[key] -%}
+    {%- if field.PrimaryKey == 'True'
+        or field.IdentitySign == 'True'
+        or field.ViceType == 'image'
+        or field.Name == 'AddUserID'
+        or field.Name == 'UpdateUserID'
+        or field.Name == 'DeleteUserID'
+        or field.Name == 'Ordinal' %}
+        {%- continue  -%}
+    {%- elsif field.ViceType=="Dictionaries" -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- else -%}
+        {%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | append: "," | append: key -%}
+    {%- endif -%}
+{% endfor %}
+{%- assign QueryListWhereParameterNames = QueryListWhereParameterNames | split: ',' | compact -%}
+using System;
+using System.Linq;
+using System.Linq.Dynamic;
+using System.Collections.Generic;
+using System.Web.Http;
+using System.Data.Entity;
+using System.Data.Entity.Infrastructure;
+
+using Newtonsoft.Json;
+
+using ErTuiShengShi.Data;
+using ErTuiShengShi.Common.Data.Enum;
+using ErTuiShengShi.Logic.Frame.DependencyInjection;
+using ErTuiShengShi.Logic.Common;
+using ErTuiShengShi.Logic.Models;
+using ErTuiShengShi.Logic.DataTools;
+using ErTuiShengShi.Logic.DataTools.APIFunction;
+using ErTuiShengShi.Logic.{{ db_NotDbName }};
+using ErTuiShengShi.Logic.{{ db_NotDbName }}.QueryWhere;
+
+namespace ErTuiShengShi.AdminWebApi.Controllers.{{ db.Name }}Manage
+{
+    /// <summary>
+    /// {{ table.Explain }}
+    /// </summary>
+    public class {{ table.Name }}Controller : ApiController
+    {
+        private const string SYSTEMNAME = "{{ db.Explain }}";
+        private const string TABLENAME = "{{ table.Explain }}";
+        private readonly IDIFactoryRead diRead;
+        private readonly ILog log;
+        private readonly long? loginAdminUserID;
+        private readonly string loginAdminUserName;
+        private readonly ErTuiShengShiEntities dber;
+        private readonly {{ db.Name }}Entities db;
+        public {{ table.Name }}Controller(IDIFactoryRead diRead, ILog log, ErTuiShengShiEntities dber, {{ db.Name }}Entities db)
+        {
+            this.diRead = diRead;
+            this.log = log;
+            loginAdminUserID = Api.User?.Id ?? throw new Exception("当前未有用户登录!");
+            loginAdminUserName = Api.User?.Name ?? throw new Exception("当前未有用户登录!");
+            this.dber = dber;
+            this.db = db;
+        }
+
+        [HttpPost]
+        public EasyUIDataGridResult QueryList(EasyuiDataGridPageQueryParam<{{ table.Name }}Extend.BasicQueryWhere> where)
+        {
+            IQueryable<{{ table.Name }}> list;
+            list = db.{{ table.Name }}.AsQueryable();
+            if (where.QueryWhere != null)
+                list = list.QueryWhere(where.QueryWhere);
+
+            var map_list = list
+                .Select(m => new
+                {
+                    {%- for key in table.Fields -%}
+                    {%- assign field = table.Fields[key] -%}
+                    {{- "\n                    " -}}
+                    m.{{ field.Name }},
+                    {%- endfor %}
+                })
+                .FilterSortOrderBy(where)
+                .FilterPagination(where, out int total)
+                .ToList();
+
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {%- if field.ViceType == "ID" -%}
+            {{"\n            "}}
+            var dict_{{ field.Name }} = DictHashExtend.ToHash<int?, string>(key => db.{{ db.Prefix }}_{{ field.NamePrefix }}
+                .Where(b => b.Id == key)
+                .Select(b => b.{{ field.NamePrefix }}Name)
+                .FirstOrDefault(), null);
+
+            {%- elsif field.ViceType == "Dictionaries" -%}
+            {{"\n            "}}
+            var dict_{{ field.Name }} = db.{{ db.Prefix }}_SystemSetType
+                .QueryRemark(E{{ db.Prefix }}_SystemSetType.{{ field.Name }})
+                .ToDictionaryConfigurations()
+                .ToDictionary(b => b.Value);
+
+            {%- endif -%}
+            {%- endfor %}
+
+            var rlist = map_list
+                .Select(m => new
+                {
+                    {%- for key in table.Fields -%}
+                    {%- assign field = table.Fields[key] -%}
+                    {{"\n                    "}}
+
+                    {%- if field.Name == 'AddUserID' or field.Name == 'UpdateUserID' or field.Name == 'DeleteUserID' -%}
+                    m.{{ field.Name }},
+                    {{ field.NamePrefix }}Name = dber.Users.QueryName(m.{{ field.Name }}),
+
+                    {%- elsif field.Name == "AddUserId" or field.Name == "AddUserID" -%}
+                    m.{{ field.Name }},
+                    {{ field.NamePrefix }}Name = dber.Users.QueryName(m.{{ field.Name }}),
+
+                    {%- elsif field.ViceType == "ID" -%}
+                    m.{{ field.Name }},
+                    {{ field.NamePrefix }}Name = dict_{{ field.Name }}.GetValue(m.{{ field.Name }}),
+
+                    {%- elsif field.ViceType == "IDStrings" -%}
+                    m.{{ field.Name }},
+                    {{ field.NamePrefix }}Names = m.{{ field.Name }}.ToFieldsExplain(ids => db.{{ db.Prefix }}_{{ field.NamePrefix }}
+                        .Where(b => ids.Contains(b.Id.ToString()))
+                        .Select(b => b.{{ field.NamePrefix }}Name)
+                        .ToList()),
+
+                    {%- elsif field.ViceType == "Dictionaries" -%}
+                    m.{{ field.Name }},
+                    {{ field.Name }}Name = dict_{{ field.Name }}.GetValue(m.{{ field.Name }}?.ToString() ?? "-1", null)?.Key,
+
+                    {%- elsif field.Type == "DateTime" -%}
+                    {{ field.Name }} = m.{{ field.Name }}.ToDateTimeString(),
+
+                    {%- else -%}
+                    m.{{ field.Name }},
+
+                    {%- endif -%}
+                    {% endfor %}
+                })
+                .ToList();
+
+            return new EasyUIDataGridResult
+            {
+                rows = rlist,
+                total = total,
+            };
+        }
+
+        [HttpPost]
+        public Result<int> Edit({{ table.Name }} model)
+        {
+            string funcName = $"编辑保存.{SYSTEMNAME}.{TABLENAME}";
+            return log.OnExeFunc_DBTransaction(logArgs =>
+            {
+                ExecuteResult<int> r = ExecuteResult<int>.DefaultCase();
+                if (!IsEditVerificationPassed(model, out string errorMsg))
+                {
+                    r.Message = errorMsg;
+                    return r;
+                }
+                logArgs["model"] = model.ToDynamic();
+                logArgs["loginAdminUserName"] = loginAdminUserName;
+                bool isAdd = model.Id == 0;
+                logArgs["isAdd"] = isAdd;
+                int onlySign = EditSave(model, isAdd);
+                logArgs["onlySign"] = onlySign;
+                db.SaveChanges();
+                r.IsSuccess = true;
+                r.Data = onlySign;
+                return r;
+            }, funcName, db);
+        }
+        private bool IsEditVerificationPassed({{ table.Name }} model, out string errorMsg)
+        {
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {%- if field.PrimaryKey=='True' or
+                field.IdentitySign=='True' or
+
+                field.Name == 'Remark' or
+
+                field.Name == 'AddTime' or
+                field.Name == 'AddUserID' or
+                field.Name == 'AddUserName' or
+                field.Name == 'UpdateTime' or
+                field.Name == 'UpdateUserID' or
+                field.Name == 'UpdateUserName' or
+                field.Name == 'DeleteTime' or
+                field.Name == 'DeleteUserName' or
+                field.Name == 'DeleteUserID' -%}
+            {%- continue  -%}
+            {%- endif -%}
+            {{"\n            "}}
+            {%- if field.Type == 'string' -%}
+            if (string.IsNullOrEmpty(model.{{ field.Name }}) || string.IsNullOrWhiteSpace(model.{{ field.Name }}))
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'int' and field.NullAbleChar == '?' -%}
+            if (model.{{ field.Name }} == null)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'int' -%}
+            if (model.{{ field.Name }} <= 0)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'long' and field.NullAbleChar == '?' -%}
+            if (model.{{ field.Name }} == null)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'long' -%}
+            if (model.{{ field.Name }} <= 0)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- else -%}
+            if (model.{{ field.Name }} == null)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- endif -%}
+            {% endfor %}
+            errorMsg = string.Empty;
+            return true;
+        }
+        private int EditSave({{ table.Name }} model, bool isAdd)
+        {
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {%- if field.Name == 'UpdateTime' %}
+            model.UpdateTime = DateTime.Now;
+            {%- elsif field.Name == 'UpdateUserID' %}
+            model.UpdateUserID = loginAdminUserID;
+            {%- elsif field.Name == 'UpdateUserId' %}
+            model.UpdateUserId = loginAdminUserID;
+            {%- elsif field.Name == 'UpdateUserName' %}
+            model.UpdateUserName = loginAdminUserName;
+            {%- else -%}
+            {%- continue  -%}
+            {%- endif -%}
+            {% endfor %}
+            if (isAdd)
+            {
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {%- if field.Name == 'AddTime' %}
+                model.AddTime = DateTime.Now;
+                {%- elsif field.Name == 'AddUserID' %}
+                model.AddUserID = loginAdminUserID;
+                {%- elsif field.Name == 'AddUserId' %}
+                model.AddUserId = loginAdminUserID;
+                {%- elsif field.Name == 'AddUserName' %}
+                model.AddUserName = loginAdminUserName;
+                {%- else -%}
+                {%- continue  -%}
+                {%- endif -%}
+                {% endfor %}
+                db.{{ table.Name }}.Add(model);
+
+                // 保存后记录日志
+                db.SaveChanges();
+                if (model.Id <= 0)
+                    throw new Exception("添加数据失败, 自增ID未加一");
+            }
+            else
+            {
+                // 保存数据
+                db.{{ table.Name }}.Attach(model);
+                var entry = db.Entry(model);
+                entry.State = EntityState.Modified;
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {%- if
+                    field.Name == 'AddTime' or
+                    field.Name == 'AddUserID' or
+                    field.Name == 'AddUserId' or
+                    field.Name == 'AddUserName' %}
+                entry.Property(gp => gp.{{ field.Name }}).IsModified = false;
+                {%- else -%}
+                {%- continue  -%}
+                {%- endif -%}
+                {% endfor %}
+            }
+            db.SaveChanges();
+            return model.Id;
+        }
+
+        public class DeletesParam
+        {
+            public int[] ids;
+        }
+        [HttpPost]
+        public Result Deletes(DeletesParam param)
+        {
+            string funcName = $"批量删除.{SYSTEMNAME}.{TABLENAME}";
+            return log.OnExeFunc_DBTransaction(logArgs =>
+            {
+                ExecuteResult r = ExecuteResult.DefaultCase();
+                if (param == null || param.ids == null || param.ids.Length <= 0)
+                {
+                    r.Message = "参数为空";
+                    return r;
+                }
+                logArgs["param"] = param;
+
+                IQueryable<{{ table.Name }}> rlist;
+                rlist = db.{{ table.Name }}.Where(a => param.ids.Contains(a.Id));
+                db.{{ table.Name }}.BulkDelete(rlist);
+
+                db.SaveChanges();
+
+                r.IsSuccess = true;
+                r.Message = "成功！";
+                return r;
+            }, funcName, db);
+        }
+    }
+}

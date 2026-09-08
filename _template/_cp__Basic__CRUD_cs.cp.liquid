@@ -1,0 +1,303 @@
+{%- assign db_NotDbName = db.Name | replace: "Db", "" -%}
+using System;
+using System.Linq;
+using System.Linq.Dynamic;
+using System.Collections.Generic;
+using System.Data.Entity;
+
+using Newtonsoft.Json;
+
+using ErTuiShengShi.Data;
+using ErTuiShengShi.Logic.Models;
+using ErTuiShengShi.Logic.DataTools;
+using ErTuiShengShi.Logic.DataTools.APIFunction;
+using ErTuiShengShi.Logic.{{ db_NotDbName }};
+using ErTuiShengShi.Logic.{{ db_NotDbName }}.QueryWhere;
+
+namespace ErTuiShengShi.Logic.{{ db_NotDbName }}.CRUD
+{
+    /// <summary>
+    /// {{ table.Explain }}
+    /// </summary>
+    public class {{ table.Name }}_CRUD : IAPIEdit<{{ table.Name }}>, IAPIGet<{{ table.Name }}>
+    {
+        private readonly MCRUDArgs param;
+        private readonly IDictionary<int, {{ table.Name }}> dict_old_cache_model;
+        public {{ table.Name }}_CRUD(MCRUDArgs param)
+        {
+            this.param = param;
+            dict_old_cache_model = new Dictionary<int, {{ table.Name }}>();
+        }
+
+        public ExecuteResult<int> Edit({{ table.Name }} model)
+        {
+            var logArgs = param.logArgs;
+            var loginAdminUserID = param.loginAdminUserID;
+            var dber = param.dber;
+            var db = param.db;
+
+            if (!IsEditVerificationPassed(model, out string errorMsg))
+                return ExecuteResult<int>.DefaultCase(IsSuccess: false, Message: errorMsg);
+
+            logArgs["model"] = model.ToDynamic();
+            logArgs["loginAdminUserID"] = loginAdminUserID;
+            string loginAdminUserName = $"{dber.Users.QueryName(loginAdminUserID)}({loginAdminUserID})";
+            logArgs["loginAdminUserName"] = loginAdminUserName;
+            bool isAdd = model.Id == 0;
+            logArgs["isAdd"] = isAdd;
+            int onlySign = EditSave(model, isAdd);
+            logArgs["onlySign"] = onlySign;
+            db.SaveChanges();
+            return ExecuteResult<int>.DefaultCase(IsSuccess: true, Data: onlySign);
+        }
+
+        private bool IsEditVerificationPassed({{ table.Name }} model, out string errorMsg)
+        {
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {%- if field.PrimaryKey=='True' or
+                field.IdentitySign=='True' or
+
+                field.Name == 'Remark' or
+
+                field.Name == 'AddTime' or
+                field.Name == 'AddUserID' or
+                field.Name == 'AddUserName' or
+                field.Name == 'UpdateTime' or
+                field.Name == 'UpdateUserID' or
+                field.Name == 'UpdateUserName' or
+                field.Name == 'DeleteTime' or
+                field.Name == 'DeleteUserName' or
+                field.Name == 'DeleteUserID' -%}
+            {%- continue  -%}
+            {%- endif -%}
+            {{"\n            "}}
+            {%- if field.Type == 'string' -%}
+            if (string.IsNullOrEmpty(model.{{ field.Name }}) || string.IsNullOrWhiteSpace(model.{{ field.Name }}))
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'int' and field.NullAbleChar == '?' -%}
+            if (model.{{ field.Name }} == null)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'int' -%}
+            if (model.{{ field.Name }} <= 0)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'long' and field.NullAbleChar == '?' -%}
+            if (model.{{ field.Name }} == null)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- elsif field.Type == 'long' -%}
+            if (model.{{ field.Name }} <= 0)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- else -%}
+            if (model.{{ field.Name }} == null)
+            {
+                errorMsg = "{{ field.Explain }}不能为空!";
+                return false;
+            }
+            {%- endif -%}
+            {% endfor %}
+            errorMsg = string.Empty;
+            return true;
+        }
+        public int EditSave({{ table.Name }} model, bool isAdd)
+        {
+            var db = param.db;
+            var check_change_tool = param.check_change_tool;
+
+            {%- for key in table.Fields -%}
+            {%- assign field = table.Fields[key] -%}
+            {%- if field.Name == 'UpdateTime' %}
+            model.UpdateTime = DateTime.Now;
+            {%- elsif field.Name == 'UpdateUserID' %}
+            model.UpdateUserID = param.loginAdminUserID;
+            {%- elsif field.Name == 'UpdateUserId' %}
+            model.UpdateUserId = param.loginAdminUserID;
+            {%- elsif field.Name == 'UpdateUserName' %}
+            model.UpdateUserName = param.loginAdminUserName;
+            {%- else -%}
+            {%- continue  -%}
+            {%- endif -%}
+            {% endfor %}
+            if (isAdd)
+            {
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {%- if field.Name == 'AddTime' %}
+                model.AddTime = DateTime.Now;
+                {%- elsif field.Name == 'AddUserID' %}
+                model.AddUserID = loginAdminUserID;
+                {%- elsif field.Name == 'AddUserId' %}
+                model.AddUserId = loginAdminUserID;
+                {%- elsif field.Name == 'AddUserName' %}
+                model.AddUserName = loginAdminUserName;
+                {%- else -%}
+                {%- continue  -%}
+                {%- endif -%}
+                {% endfor %}
+                db.{{ table.Name }}.Add(model);
+
+                // 保存后记录日志
+                db.SaveChanges();
+                if (model.Id <= 0)
+                    throw new Exception("添加数据失败, 自增ID未加一");
+                object new_model = model.ToDynamic();
+                WriteLog(model.Id, "后台手动添加", $"JSON: {JsonConvert.SerializeObject(new_model)}");
+            }
+            else
+            {
+                {{ table.Name }} old_model;
+                old_model = GetOldCacheModel(model.Id);
+                object old_model_dy = old_model.ToDynamic();
+
+                // model.RowVersion = old_model.RowVersion;
+
+                object new_model = model.ToDynamic();
+                var check_results = check_change_tool.CheckModel(old_model_dy, new_model);
+                check_results = check_results.FilterResultsFieldNames(new string[] {
+                    {%- for key in table.Fields -%}
+                    {%- assign field = table.Fields[key] -%}
+                    {%- if
+                        field.Name == 'RowVersion' or
+                        field.Name == 'AddTime' or
+                        field.Name == 'AddUserID' or
+                        field.Name == 'AddUserId' or
+                        field.Name == 'AddUserName' %}
+                    nameof(model.{{ field.Name }}),
+                    {%- else -%}
+                    {%- continue  -%}
+                    {%- endif -%}
+                    {% endfor %}
+                });
+                check_results.ForeachExecute(item => WriteLog(model.Id, "后台手动修改", item.ToStringFormat()));
+
+                // 保存数据
+                db.{{ table.Name }}.Attach(model);
+                var entry = db.Entry(model);
+                entry.State = EntityState.Modified;
+                {%- for key in table.Fields -%}
+                {%- assign field = table.Fields[key] -%}
+                {%- if
+                    field.Name == 'AddTime' or
+                    field.Name == 'AddUserID' or
+                    field.Name == 'AddUserId' or
+                    field.Name == 'AddUserName' %}
+                entry.Property(gp => gp.{{ field.Name }}).IsModified = false;
+                {%- else -%}
+                {%- continue  -%}
+                {%- endif -%}
+                {% endfor %}
+            }
+            db.SaveChanges();
+            return model.Id;
+        }
+
+        private void WriteLog(int? Id, string type, string msg)
+        {
+            var log = param.log;
+            var logArgs = log.CreateLogArgs();
+            logArgs["Id"] = Id;
+            logArgs["type"] = type;
+            logArgs["msg"] = msg;
+            log.Info("表: {{ table.Explain }}[{{ table.Name }}] 日志操作", logArgs);
+
+            var db = param.db;
+            db.{{ db.Prefix }}_SystemOperationLog.Add(new {{ db.Prefix }}_SystemOperationLog()
+            {
+                Id = 0,
+                TableName = "{{ table.Explain }}[{{ table.Name }}]",
+                TableID = Id,
+                OperationType = type,
+                Remark = msg,
+                AddTime = DateTime.Now,
+                AddUserID = $"{param.loginAdminUserName}({param.loginAdminUserID})",
+            });
+        }
+
+        public ExecuteResult Delete(int[] ids)
+        {
+            var logArgs = param.logArgs;
+            var db = param.db;
+
+            ExecuteResult r = ExecuteResult.DefaultCase();
+            if (ids == null)
+            {
+                r.Message = "Ids为空";
+                return r;
+            }
+            logArgs["ids"] = ids;
+
+            IQueryable<{{ table.Name }}> rlist = db.{{ table.Name }}
+                .Where(a => ids.Contains(a.Id));
+            var rlist_Dynamics = rlist.ToDynamics().ToArray();
+
+            foreach (var item in rlist_Dynamics)
+                WriteLog(null, "后台手动删除", $"JSON: {JsonConvert.SerializeObject(item)}");
+
+            db.{{ table.Name }}.BulkDelete(rlist);
+            db.SaveChanges();
+
+            r.IsSuccess = true;
+            r.Message = "成功！";
+            return r;
+        }
+
+        public {{ table.Name }} GetModel(int id)
+        {
+            var db = param.db;
+            {{ table.Name }} model = db.{{ table.Name }}
+                .Where(b => b.Id == id)
+                .FirstOrDefault();
+            SetOldCacheModel(model);
+            return model;
+        }
+        public {{ table.Name }}[] GetModels(int[] ids)
+        {
+            var db = param.db;
+            if (ids == null || ids.Length <= 0)
+                return null;
+
+            {{ table.Name }}[] models = db.{{ table.Name }}
+                .Where(b => ids.Contains(b.Id))
+                .ToArray();
+            if (models == null || models.Length <= 0)
+                return models;
+            for (int i = 0; i < models.Length; i++)
+                SetOldCacheModel(models[i]);
+            return models;
+        }
+        private void SetOldCacheModel({{ table.Name }} model)
+        {
+            if (model == null)
+                return;
+            dict_old_cache_model[model.Id] = model;
+        }
+        private {{ table.Name }} GetOldCacheModel(int model_id)
+        {
+            var db = param.db;
+            if (dict_old_cache_model.ContainsKey(model_id))
+                return dict_old_cache_model[model_id];
+
+            {{ table.Name }} old_model;
+            old_model = db.{{ table.Name }}
+                .Where(b => b.Id == model_id)
+                .AsNoTracking()
+                .FirstOrDefault();
+            dict_old_cache_model[model_id] = old_model;
+            return old_model;
+        }
+    }
+}
