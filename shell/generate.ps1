@@ -1,3 +1,7 @@
+﻿# 设置控制台输出编码为 UTF-8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
 $ExecutePath = $PWD
 Set-Location $PSScriptRoot
 Set-Location ..
@@ -9,9 +13,9 @@ function PrintLineSplit([string]$path)
     Write-Host ""
 }
 
-$cpath = "./_release/PullDataBaseData-0.0.2/runConfig.json"
+$cpath = "./_configs/PullDataBaseData-runConfig.json"
 $batchCacheFilePath = "./_output/batch_cache.txt"
-$FolderName_InferentialData = "Table02_InferentialResult"
+$FolderName_InferentialData = ""
 
 function GenerateFile([string]$template_path, [string]$output_path, [string]$db_json_path, [string]$table_json_path)
 {
@@ -95,6 +99,7 @@ function ReadDataBaseConfig([string]$db)
 function ReadDataBaseConfigs([string]$cpath)
 {
     $config = Get-Content -Path $cpath -Raw | ConvertFrom-Json
+    $FolderName_InferentialData = $config.FolderName_InferentialData
 
     for ($i_db = 0; $i_db -lt $config.DBInfos.Count; $i_db++) {
         $db = $config.DBInfos[$i_db].Name
@@ -139,8 +144,8 @@ ReadDataBaseConfigs $cpath
 PrintLineSplit
 
 # 执行批量生成
-Write-Host ".\_release\TranslationTemplateCommand.0.0.1\TranslationTemplateCommand.exe batch -r $PWD --config $batchCacheFilePath"
-.\_release\TranslationTemplateCommand.0.0.1\TranslationTemplateCommand.exe batch -r $PWD --config $batchCacheFilePath
+Write-Host ".\_release\TranslationTemplateCommand.0.0.2-win-x64\TranslationTemplateCommand.exe batch -r $PWD --config $batchCacheFilePath"
+.\_release\TranslationTemplateCommand.0.0.2-win-x64\TranslationTemplateCommand.exe batch -r $PWD --config $batchCacheFilePath
 
 PrintLineSplit
 
