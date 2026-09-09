@@ -2,21 +2,22 @@
 
 ## 使用文档
 
+拉取项目脚本, 更改至独有的Git仓库下, 直接调用 `./shell/` 下命令文件即可, 依据自身需要更改 `.gitignore` 的配置
+
 ### 使用前说明
 
 首先拉取数据库下表结构: 使用命令行工具[YellowTulipShow/DatabaseStructurePullTool](https://github.com/YellowTulipShow/DatabaseStructurePullTool)
 
-然后将数据库内容按照模版文件生成对应代码: 使用命令行工具[YellowTulipShow/DatabaseStructurePullTool](https://github.com/YellowTulipShow/DatabaseStructurePullTool)
-
-此两个工具放置再 `_release` 目录下
-
-注意: 如果不是使用发布压缩包, 使用拉取代码的形式, 注意修改脚本中的命令行工具的路径版本号
+然后将数据库内容按照模版文件生成对应代码: 使用命令行工具[YellowTulipShow/NetTemplate](https://github.com/YellowTulipShow/NetTemplate)
 
 ### 调用脚本
 
-切换到项目根目录
-
 使用 `powershell` 执行以下命令
+
+安装执行脚本
+```powershell
+.\shell\install.ps1
+```
 
 拉取指定数据库的数据: 输入数据库前方的数字标识, 可输入多个, 使用英文逗号分隔
 ```powershell
@@ -30,7 +31,7 @@
 
 执行过程中会自动弹出生成目标的所在文件夹
 
-## 模板说明
+### 模板说明
 
 根目录 `./_template` 下 `.liquid` 结尾文件为模板
 ```C#
@@ -74,7 +75,7 @@ Extend/_Basic_ExtendOld.cs.liquid
 Extend/_Basic_TestDataGet.cs.liquid
 ```
 
-## 添加新的数据库
+### 添加新的数据库
 
 读取项目说明文档即可: [YellowTulipShow/DatabaseStructurePullTool](https://github.com/YellowTulipShow/DatabaseStructurePullTool)
 
