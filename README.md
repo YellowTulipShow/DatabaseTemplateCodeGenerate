@@ -75,6 +75,17 @@ Extend/_Basic_ExtendOld.cs.liquid
 Extend/_Basic_TestDataGet.cs.liquid
 ```
 
+模版内部数据标识, 通过脚本调用(`./shell/generate.ps1`) 写死为: 数据库(db), 数据表(table)
+
+标识与模版的使用一一对应
+
+生成的临时文件格式为: `./_output/batch_cache.txt`:
+
+内容为:
+```text
+./_template/模版.html.liquid | ./_output/输出的目标文件路径.html | db:./_data/数据库内容.json  table:./_data/XXXX/具体表数据.json
+```
+
 ### 添加新的数据库
 
 读取项目说明文档即可: [YellowTulipShow/DatabaseStructurePullTool](https://github.com/YellowTulipShow/DatabaseStructurePullTool)
